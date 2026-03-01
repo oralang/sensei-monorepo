@@ -1,5 +1,5 @@
 use sensei_core::{DenseIndexSet, Idx, IncIterable};
-use sir_assembler::{AsmReference, Assembler, MarkId, MarkReference, op};
+use sir_assembler::{AsmReference, AssembleError, Assembler, MarkId, MarkReference, op};
 use sir_data::{BasicBlockId, ControlView, DataId, EthIRProgram, FunctionId, LocalId, Span};
 
 use crate::static_memory_layout::StaticMemoryLayout;
@@ -9,6 +9,21 @@ mod static_memory_layout;
 
 const ASM_BYTES_CAPACITY: usize = 20_000;
 const ASM_SECTIONS_CAPACITY: usize = 512;
+
+#[derive(Debug, Clone)]
+pub enum BytecodeError {
+    Assemble(AssembleError),
+}
+
+impl std::fmt::Display for BytecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BytecodeError::Assemble(err) => write!(f, "assembly failed: {err:?}"),
+        }
+    }
+}
+
+impl std::error::Error for BytecodeError {}
 
 pub(crate) struct MarkMap {
     init_basic_block_marks_start: MarkId,
@@ -197,7 +212,7 @@ impl<'ir> Translator<'ir> {
     }
 }
 
-pub fn ir_to_bytecode(ir: &EthIRProgram, result: &mut Vec<u8>) {
+pub fn ir_to_bytecode(ir: &EthIRProgram, result: &mut Vec<u8>) -> Result<(), BytecodeError> {
     let mut translator = Translator::new(ir);
 
     translator.translating_init_code = true;
@@ -221,5 +236,6 @@ pub fn ir_to_bytecode(ir: &EthIRProgram, result: &mut Vec<u8>) {
     let _mark_to_offset = translator
         .asm
         .assemble(result, Some(translator.mark_map.next_mark_id.get() as usize))
-        .expect("debug backend produces valid assembly");
+        .map_err(BytecodeError::Assemble)?;
+    Ok(())
 }

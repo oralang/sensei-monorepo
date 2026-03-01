@@ -337,7 +337,12 @@ fn parser<'arena, 'src: 'arena>(
         .then_ignore(just(Token::Newline).repeated())
         .then(select! { Token::HexLiteral => () }.try_map_with(|_, e| {
             let s: &str = &source[e.span()];
-            let hex_str = s.strip_prefix("0x").expect("invalid hex literal");
+            let Some(hex_str) = s.strip_prefix("0x") else {
+                return Err(Rich::custom(
+                    e.span(),
+                    "Data definitions require non-negative hex literals prefixed with 0x",
+                ));
+            };
             if !hex_str.len().is_multiple_of(2) {
                 return Err(Rich::custom(
                     e.span(),
@@ -345,7 +350,8 @@ fn parser<'arena, 'src: 'arena>(
                 ));
             }
             let bytes = arena.alloc_slice_fill_default(hex_str.len() / 2);
-            hex::decode_to_slice(hex_str, bytes).expect("hex not decoded despite validation");
+            hex::decode_to_slice(hex_str, bytes)
+                .map_err(|_| Rich::custom(e.span(), "Invalid hex data definition"))?;
             Ok(Spanned::new(bytes, e.span()))
         }))
         .then_ignore(just(Token::Newline).ignored().or_not())

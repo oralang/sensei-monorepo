@@ -1,6 +1,6 @@
 use clap::Parser;
 use sir_optimizations::Optimizer;
-use sir_parser::{EmitConfig, parse_or_panic};
+use sir_parser::{EmitConfig, parse_ir};
 use std::{
     fs,
     io::{self, Read},
@@ -80,7 +80,13 @@ fn main() {
     };
 
     // Parse IR to EthIRProgram
-    let mut program = parse_or_panic(&source, config);
+    let mut program = match parse_ir(&source, config) {
+        Ok(program) => program,
+        Err(err) => {
+            eprintln!("{}", err.render_with_source(&source, 2));
+            std::process::exit(1);
+        }
+    };
 
     if let Some(passes) = cli.optimize {
         let mut optimizer = Optimizer::new(program);
@@ -89,7 +95,10 @@ fn main() {
     }
 
     let mut bytecode = Vec::with_capacity(0x6000);
-    sir_debug_backend::ir_to_bytecode(&program, &mut bytecode);
+    if let Err(err) = sir_debug_backend::ir_to_bytecode(&program, &mut bytecode) {
+        eprintln!("Failed to generate bytecode: {err}");
+        std::process::exit(1);
+    }
 
     // Format and print output
     print!("0x");
