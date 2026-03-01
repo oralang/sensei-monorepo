@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use sir_debug_backend::ir_to_bytecode;
 use sir_optimizations::Optimizer;
 use sir_parser::{EmitConfig, ParseIrError, ParseIrErrorKind, Span, parse_ir};
