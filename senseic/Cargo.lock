@@ -1609,6 +1609,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "senseic-ffi"
+version = "0.1.0"
+dependencies = [
+ "sir-debug-backend",
+ "sir-optimizations",
+ "sir-parser",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
