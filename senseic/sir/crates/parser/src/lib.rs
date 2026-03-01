@@ -134,6 +134,27 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_ir_negative_hex_data_definition_is_parse_error() {
+        let input = r#"
+            fn init:
+                entry {
+                    stop
+                }
+            data
+                bytes
+                -0x01
+        "#;
+
+        let err = parse_ir(input, EmitConfig::init_only())
+            .expect_err("negative hex data definition should fail with parse error");
+        assert_eq!(err.kind, ParseIrErrorKind::Parse);
+        assert!(
+            err.message.contains("non-negative hex literals"),
+            "unexpected parse error: {err:?}"
+        );
+    }
+
+    #[test]
     fn test_simple_function1() {
         let input = r#"
             fn init:

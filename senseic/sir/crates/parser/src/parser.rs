@@ -443,4 +443,27 @@ mod tests {
         let ParamExpr::Num(n) = &stmt.params[0] else { panic!("expected Num") };
         assert_eq!(n.inner, U256::ZERO.wrapping_sub(U256::from(3)));
     }
+
+    #[test]
+    fn test_negative_hex_data_definition_reports_parse_error() {
+        let arena = Bump::with_capacity(4000);
+        let err = parse(
+            r#"
+            fn init:
+                entry {
+                    stop
+                }
+            data
+                bytes
+                -0x01
+            "#,
+            &arena,
+        )
+        .expect_err("negative hex data definition should not parse");
+
+        assert!(
+            err.iter().any(|e| format!("{e:?}").contains("non-negative hex literals")),
+            "unexpected parser error: {err:?}"
+        );
+    }
 }
