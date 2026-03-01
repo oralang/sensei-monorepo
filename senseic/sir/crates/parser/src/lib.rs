@@ -7,6 +7,41 @@ use smallvec::SmallVec;
 pub use emit::*;
 pub use parser::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseIrErrorKind {
+    Parse,
+    Emit,
+    IllegalIr,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseIrError {
+    pub kind: ParseIrErrorKind,
+    pub message: String,
+    pub spans: Vec<Span>,
+}
+
+impl ParseIrError {
+    pub fn render_with_source(&self, source: &str, line_range: usize) -> String {
+        use std::fmt::Write;
+
+        let mut out = String::new();
+        let _ = writeln!(&mut out, "{self}");
+        for span in &self.spans {
+            highlight_span(&mut out, source, span.clone(), line_range);
+        }
+        out
+    }
+}
+
+impl std::fmt::Display for ParseIrError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}: {}", self.kind, self.message)
+    }
+}
+
+impl std::error::Error for ParseIrError {}
+
 pub fn highlight_span(out: &mut impl std::fmt::Write, source: &str, span: Span, line_range: usize) {
     let mut lines: SmallVec<[usize; 1024]> = SmallVec::new();
     lines.extend(source.char_indices().filter_map(|(i, c)| (c == '\n').then_some(i)));
@@ -37,28 +72,47 @@ pub fn highlight_span(out: &mut impl std::fmt::Write, source: &str, span: Span, 
 }
 
 pub fn parse_or_panic<'a>(source: &str, config: EmitConfig<'a>) -> EthIRProgram {
-    let program = parse_without_legalization(source, config);
-    sir_analyses::legalize(&program).unwrap_or_else(|e| panic!("{e}"));
-    program
+    parse_ir(source, config).unwrap_or_else(|err| panic!("{}", err.render_with_source(source, 2)))
 }
 
 pub fn parse_without_legalization<'a>(source: &str, config: EmitConfig<'a>) -> EthIRProgram {
+    parse_ir_without_legalization(source, config)
+        .unwrap_or_else(|err| panic!("{}", err.render_with_source(source, 2)))
+}
+
+pub fn parse_ir<'a>(source: &str, config: EmitConfig<'a>) -> Result<EthIRProgram, ParseIrError> {
+    let program = parse_ir_without_legalization(source, config)?;
+    sir_analyses::legalize(&program).map_err(|err| ParseIrError {
+        kind: ParseIrErrorKind::IllegalIr,
+        message: err.to_string(),
+        spans: Vec::new(),
+    })?;
+    Ok(program)
+}
+
+pub fn parse_ir_without_legalization<'a>(
+    source: &str,
+    config: EmitConfig<'a>,
+) -> Result<EthIRProgram, ParseIrError> {
     use bumpalo::{Bump, collections::String as BString};
 
     let arena = Bump::with_capacity(8_192);
-    let ast = parser::parse(source, &arena).unwrap_or_else(|err| {
-        let err = &err[0];
-        let mut out = BString::with_capacity_in(200, &arena);
-        highlight_span(&mut out, source, err.span().clone(), 2);
-        panic!("{}\n{:?}", out, err);
+    let ast = parser::parse(source, &arena).map_err(|errs| {
+        let spans = errs.iter().map(|err| err.span().clone()).collect::<Vec<_>>();
+        let message = errs.iter().map(|err| format!("{err:?}")).collect::<Vec<_>>().join("\n");
+        ParseIrError { kind: ParseIrErrorKind::Parse, message, spans }
     });
+    let ast = ast?;
 
-    emit::emit_ir(&arena, &ast, config).unwrap_or_else(|err| {
+    emit::emit_ir(&arena, &ast, config).map_err(|err| {
+        let spans = err.spans.iter().cloned().collect::<Vec<_>>();
         let mut out = BString::with_capacity_in(400, &arena);
-        for span in err.spans.iter() {
+        for span in &spans {
             highlight_span(&mut out, source, span.clone(), 0);
         }
-        panic!("{}{}", out, err.reason);
+        let mut message = out.to_string();
+        message.push_str(err.reason.as_str());
+        ParseIrError { kind: ParseIrErrorKind::Emit, message, spans }
     })
 }
 
@@ -77,6 +131,27 @@ mod tests {
     fn assert_parse_format<'a>(input: &str, expected: &str, config: EmitConfig<'a>) {
         let actual = parse_and_display(input, config);
         assert_trim_strings_eq_with_diff(&actual, expected, "IR snapshot");
+    }
+
+    #[test]
+    fn test_parse_ir_negative_hex_data_definition_is_parse_error() {
+        let input = r#"
+            fn init:
+                entry {
+                    stop
+                }
+            data
+                bytes
+                -0x01
+        "#;
+
+        let err = parse_ir(input, EmitConfig::init_only())
+            .expect_err("negative hex data definition should fail with parse error");
+        assert_eq!(err.kind, ParseIrErrorKind::Parse);
+        assert!(
+            err.message.contains("non-negative hex literals"),
+            "unexpected parse error: {err:?}"
+        );
     }
 
     #[test]

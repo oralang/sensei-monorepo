@@ -1,0 +1,8 @@
+language = "C"
+include_guard = "SENSEIC_FFI_H"
+pragma_once = true
+documentation = true
+tab_width = 4
+
+[export]
+item_types = ["functions", "structs", "enums"]
