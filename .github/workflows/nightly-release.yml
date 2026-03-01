@@ -1,0 +1,127 @@
+name: Nightly Release
+
+on:
+  schedule:
+    # Midnight UTC daily
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-changes:
+    name: Check for new commits
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        run: |
+          LAST_24H=$(git log --since="24 hours ago" --oneline | head -1)
+          if [ -n "$LAST_24H" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: senseic
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            artifact: libsenseic_ffi-x86_64-linux
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            artifact: libsenseic_ffi-aarch64-macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: senseic -> target
+
+      - name: Run tests
+        run: cargo test -p senseic-ffi
+
+      - name: Build staticlib (release)
+        run: cargo build -p senseic-ffi --release --target ${{ matrix.target }}
+
+      - name: Install cbindgen
+        run: cargo install cbindgen --locked
+
+      - name: Generate C header
+        run: cbindgen --config sir/crates/ffi/cbindgen.toml --crate senseic-ffi --output senseic_ffi.h
+
+      - name: Package artifact
+        run: |
+          mkdir -p staging/include
+          cp target/${{ matrix.target }}/release/libsenseic_ffi.a staging/
+          cp senseic_ffi.h staging/include/
+          tar czf ${{ matrix.artifact }}.tar.gz -C staging .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: senseic/${{ matrix.artifact }}.tar.gz
+
+  release:
+    name: Publish nightly release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          TAG="nightly"
+          TITLE="Nightly Build ($DATE)"
+          BODY="Automated nightly build from main branch.
+
+          **Date:** $DATE
+          **Commit:** ${{ github.sha }}
+
+          ## Artifacts
+          - \`libsenseic_ffi-x86_64-linux.tar.gz\` — Linux x86_64 staticlib + header
+          - \`libsenseic_ffi-aarch64-macos.tar.gz\` — macOS arm64 staticlib + header
+
+          ## Usage
+          Each archive contains:
+          - \`libsenseic_ffi.a\` — static library
+          - \`include/senseic_ffi.h\` — C header (for Zig \`@cImport\`)
+          "
+
+          # Delete existing nightly release/tag if present
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          # Create new release
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$BODY" \
+            --prerelease \
+            artifacts/**/*.tar.gz
