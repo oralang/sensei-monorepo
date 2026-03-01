@@ -105,7 +105,7 @@ pub fn parse_ir_without_legalization<'a>(
     let ast = ast?;
 
     emit::emit_ir(&arena, &ast, config).map_err(|err| {
-        let spans = err.spans.iter().cloned().collect::<Vec<_>>();
+        let spans = err.spans.to_vec();
         let mut out = BString::with_capacity_in(400, &arena);
         for span in &spans {
             highlight_span(&mut out, source, span.clone(), 0);
