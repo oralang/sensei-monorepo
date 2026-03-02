@@ -6,3 +6,6 @@ tab_width = 4
 
 [export]
 item_types = ["functions", "structs", "enums"]
+
+[enum]
+prefix_with_name = true

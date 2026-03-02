@@ -9,22 +9,22 @@
 #include <stdlib.h>
 
 typedef enum SenseicStatus {
-    Ok = 0,
-    InvalidArgument = 1,
-    ParseError = 2,
-    EmitError = 3,
-    IllegalIrError = 4,
-    BackendError = 5,
-    Panic = 6,
+    SenseicStatus_Ok = 0,
+    SenseicStatus_InvalidArgument = 1,
+    SenseicStatus_ParseError = 2,
+    SenseicStatus_EmitError = 3,
+    SenseicStatus_IllegalIrError = 4,
+    SenseicStatus_BackendError = 5,
+    SenseicStatus_Panic = 6,
 } SenseicStatus;
 
 typedef enum SenseicDiagnosticKind {
-    Parse = 1,
-    Emit = 2,
-    IllegalIr = 3,
-    Backend = 4,
-    Internal = 5,
-    Panic = 6,
+    SenseicDiagnosticKind_Parse = 1,
+    SenseicDiagnosticKind_Emit = 2,
+    SenseicDiagnosticKind_IllegalIr = 3,
+    SenseicDiagnosticKind_Backend = 4,
+    SenseicDiagnosticKind_Internal = 5,
+    SenseicDiagnosticKind_Panic = 6,
 } SenseicDiagnosticKind;
 
 typedef struct SenseicByteSlice {
