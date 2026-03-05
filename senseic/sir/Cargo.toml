@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "test-utils"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# Core dependency reused by SIR crates.
+sensei-core = { path = "../crates/sensei-core" }
+
+# SIR crates in this sub-workspace.
+sir-data = { path = "crates/data" }
+sir-analyses = { path = "crates/analyses" }
+sir-parser = { path = "crates/parser" }
+sir-assembler = { path = "crates/assembler" }
+sir-debug-backend = { path = "crates/debug-backend" }
+sir-optimizations = { path = "crates/optimizations" }
+sir-transforms = { path = "crates/transforms" }
+
+# Shared third-party dependencies used by SIR.
+bumpalo = { version = "3.19.0", features = ["allocator-api2", "collections"] }
+allocator-api2 = "0.2"
+hashbrown = { version = "0.16.0", features = ["allocator-api2"] }
+smallvec = "1.15.1"
+alloy-primitives = "1.1.2"
+thiserror = "2.0.17"
+logos = "0.16.0"
+chumsky = "0.11.1"
+index_vec = "0.1.4"
+clap = { version = "4.5", features = ["derive"] }
+pretty_assertions = "1.4.1"
